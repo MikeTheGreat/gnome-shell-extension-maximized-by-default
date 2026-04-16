@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash deploy.sh)"
+      "Bash(bash deploy.sh)",
+      "Bash(./deploy.sh)",
+      "Bash(gdbus call *)",
+      "Bash(gdbus introspect *)",
+      "Bash(wmctrl -l -x)",
+      "Bash(xprop -root _NET_CLIENT_LIST)",
+      "Bash(qdbus org.kde.KWin)",
+      "Bash(journalctl -b 0 -o cat _COMM=gnome-shell)"
     ]
   }
 }
