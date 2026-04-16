@@ -22,12 +22,14 @@ fi
 
 echo "🔍 Found extension: $UUID"
 
-# 2️⃣ BUILD Phase (Create Zip)
+# 2️⃣ BUILD Phase (Compile schemas + Create Zip)
+echo "🔧 Compiling GSettings schemas..."
+glib-compile-schemas "$SRC_DIR/schemas/"
+
 echo "📦 Creating package in $BUILD_DIR..."
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
-# Create zip ignoring folder paths (-j)
-zip -q -j9 "$BUILD_DIR/gnome-shell-extension-maximized-by-default.zip" "$SRC_DIR"/*
+(cd "$SRC_DIR" && zip -q -r9 "../$BUILD_DIR/gnome-shell-extension-maximized-by-default.zip" .)
 
 # 3️⃣ INSTALL Phase (Direct Copy)
 echo "🚀 Installing..."

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.maximized-by-default"
+          path="/org/gnome/shell/extensions/maximized-by-default/">
+    <key name="excluded-apps" type="as">
+      <default>[]</default>
+      <summary>Excluded applications</summary>
+      <description>List of WM_CLASS strings for windows that should not be maximized on launch.</description>
+    </key>
+  </schema>
+</schemalist>
