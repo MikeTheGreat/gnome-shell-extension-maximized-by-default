@@ -8,7 +8,18 @@
       "Bash(wmctrl -l -x)",
       "Bash(xprop -root _NET_CLIENT_LIST)",
       "Bash(qdbus org.kde.KWin)",
-      "Bash(journalctl -b 0 -o cat _COMM=gnome-shell)"
+      "Bash(journalctl -b 0 -o cat _COMM=gnome-shell)",
+      "Read(//usr/share/gnome-shell/extensions/**)",
+      "Read(//usr/local/share/gnome-shell/**)",
+      "Read(//home/mike/.local/share/gnome-shell/extensions/**)",
+      "Bash(journalctl -b 0 --since \"1 hour ago\" -p err..emerg)",
+      "Bash(journalctl -b 0 -p err..emerg)",
+      "Bash(journalctl -b -1 -p err..emerg)",
+      "Bash(journalctl -b 0)",
+      "Bash(journalctl -b -1)",
+      "Bash(journalctl -b 0 --output=short-precise)",
+      "Bash(journalctl)",
+      "Bash(gsettings get *)"
     ]
   }
 }

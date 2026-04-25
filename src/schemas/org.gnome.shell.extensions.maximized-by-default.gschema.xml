@@ -2,10 +2,10 @@
 <schemalist>
   <schema id="org.gnome.shell.extensions.maximized-by-default"
           path="/org/gnome/shell/extensions/maximized-by-default/">
-    <key name="excluded-apps" type="as">
+    <key name="excluded-rules" type="as">
       <default>[]</default>
-      <summary>Excluded applications</summary>
-      <description>List of WM_CLASS strings for windows that should not be maximized on launch.</description>
+      <summary>Exclusion rules</summary>
+      <description>Each entry is "WMClass" (exclude all windows) or "WMClass::TitlePattern" (exclude windows whose title contains the pattern, case-insensitive).</description>
     </key>
   </schema>
 </schemalist>

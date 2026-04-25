@@ -23,7 +23,7 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
         });
 
         const entry = new Gtk.Entry({
-            placeholder_text: 'Enter WM_CLASS…',
+            placeholder_text: 'WMClass  or  WMClass::TitlePattern',
             hexpand: true,
             valign: Gtk.Align.CENTER,
         });
@@ -39,13 +39,13 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
 
         // Exclusion list group
         const listGroup = new Adw.PreferencesGroup({
-            title: 'Excluded Applications',
-            description: 'Windows from these applications will not be maximized on launch.',
+            title: 'Exclusion Rules',
+            description: 'Windows matching these rules will not be maximized on launch.',
         });
         page.add(listGroup);
 
         const placeholder = new Adw.ActionRow({
-            title: 'No applications excluded',
+            title: 'No exclusion rules',
             sensitive: false,
         });
         listGroup.add(placeholder);
@@ -57,22 +57,31 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
                 listGroup.remove(row);
             listRows = [];
 
-            const excluded = settings.get_strv('excluded-apps');
-            placeholder.visible = excluded.length === 0;
+            const rules = settings.get_strv('excluded-rules');
+            placeholder.visible = rules.length === 0;
 
-            const sorted = [...excluded].sort((a, b) =>
+            const sorted = [...rules].sort((a, b) =>
                 a.toLowerCase().localeCompare(b.toLowerCase()));
 
-            for (const wmClass of sorted) {
-                const row = new Adw.ActionRow({ title: wmClass });
+            for (const rule of sorted) {
+                const sep = rule.indexOf('::');
+                let title, subtitle;
+                if (sep === -1) {
+                    title = rule;
+                    subtitle = 'All windows';
+                } else {
+                    title = rule.slice(0, sep);
+                    subtitle = `Title contains: "${rule.slice(sep + 2)}"`;
+                }
+                const row = new Adw.ActionRow({ title, subtitle });
                 const trashBtn = new Gtk.Button({
                     icon_name: 'user-trash-symbolic',
                     valign: Gtk.Align.CENTER,
                     css_classes: ['destructive-action'],
                 });
                 trashBtn.connect('clicked', () => {
-                    const current = settings.get_strv('excluded-apps');
-                    settings.set_strv('excluded-apps', current.filter(x => x !== wmClass));
+                    const current = settings.get_strv('excluded-rules');
+                    settings.set_strv('excluded-rules', current.filter(x => x !== rule));
                 });
                 row.add_suffix(trashBtn);
                 listGroup.add(row);
@@ -80,7 +89,7 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
             }
         };
 
-        settings.connect('changed::excluded-apps', rebuildList);
+        settings.connect('changed::excluded-rules', rebuildList);
         rebuildList();
 
         // Button label tracks entry content
@@ -91,9 +100,9 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
         const doAction = () => {
             const text = entry.text.trim();
             if (text) {
-                const current = settings.get_strv('excluded-apps');
+                const current = settings.get_strv('excluded-rules');
                 if (!current.includes(text))
-                    settings.set_strv('excluded-apps', [...current, text]);
+                    settings.set_strv('excluded-rules', [...current, text]);
                 entry.set_text('');
             } else {
                 this._openPicker(prefsWindow, settings);
@@ -105,12 +114,20 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
     }
 
     _fetchWindows() {
+        return this._callDbus('GetOpenWindows');
+    }
+
+    _fetchRecentWindows() {
+        return this._callDbus('GetRecentWindows');
+    }
+
+    _callDbus(method) {
         try {
             const result = Gio.DBus.session.call_sync(
                 'org.gnome.Shell',
                 '/org/gnome/Shell/Extensions/MaximizedByDefault',
                 'org.gnome.Shell.Extensions.MaximizedByDefault',
-                'GetOpenWindows',
+                method,
                 null,
                 new GLib.VariantType('(s)'),
                 Gio.DBusCallFlags.NONE,
@@ -118,13 +135,7 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
                 null
             );
             const [json] = result.deepUnpack();
-            const seen = new Set();
-            return JSON.parse(json).filter(w => {
-                if (!w.wmClass || seen.has(w.wmClass))
-                    return false;
-                seen.add(w.wmClass);
-                return true;
-            });
+            return JSON.parse(json).filter(w => w.wmClass);
         } catch (e) {
             console.error(e);
             return [];
@@ -136,7 +147,7 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
             title: 'Pick a Window',
             modal: true,
             transient_for: prefsWindow,
-            default_width: 500,
+            default_width: 540,
             default_height: 400,
             destroy_with_parent: true,
         });
@@ -161,18 +172,36 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
                 child = next;
             }
 
-            const excluded = settings.get_strv('excluded-apps');
-            const allWindows = this._fetchWindows();
-            const windows = allWindows.filter(w => !excluded.includes(w.wmClass));
+            const rules = settings.get_strv('excluded-rules');
+            const classOnlyRules = new Set(rules.filter(r => !r.includes('::')));
 
-            if (windows.length === 0) {
+            const filterExcluded = wins => wins.filter(w => {
+                if (classOnlyRules.has(w.wmClass)) return false;
+                return !rules.includes(`${w.wmClass}::${w.title}`);
+            });
+
+            const sortWins = wins => [...wins].sort((a, b) => {
+                const c = a.wmClass.toLowerCase().localeCompare(b.wmClass.toLowerCase());
+                return c !== 0 ? c : a.title.toLowerCase().localeCompare(b.title.toLowerCase());
+            });
+
+            const allOpen = this._fetchWindows();
+            const allRecent = this._fetchRecentWindows();
+
+            const openKeys = new Set(allOpen.map(w => `${w.wmClass}::${w.title}`));
+            const windows = filterExcluded(allOpen);
+            const recent = filterExcluded(allRecent).filter(
+                w => !openKeys.has(`${w.wmClass}::${w.title}`)
+            );
+
+            if (windows.length === 0 && recent.length === 0) {
                 if (autoClose) {
                     pickerWindow.close();
                     return;
                 }
-                const label = allWindows.length === 0
-                    ? 'No open windows found.\nMake sure the extension is enabled.'
-                    : 'All currently open windows are already in the excluded list.';
+                const label = allOpen.length === 0 && allRecent.length === 0
+                    ? 'No windows found.\nMake sure the extension is enabled.'
+                    : 'All windows are already excluded.';
                 const emptyRow = new Gtk.ListBoxRow({ selectable: false });
                 emptyRow.set_child(new Gtk.Label({
                     label,
@@ -183,28 +212,66 @@ export default class MaximizedByDefaultPreferences extends ExtensionPreferences 
                 return;
             }
 
-            const sorted = [...windows].sort((a, b) => {
-                const c = a.wmClass.toLowerCase().localeCompare(b.wmClass.toLowerCase());
-                return c !== 0 ? c : a.title.toLowerCase().localeCompare(b.title.toLowerCase());
-            });
+            const addSectionHeader = label => {
+                const headerRow = new Gtk.ListBoxRow({ selectable: false, activatable: false });
+                headerRow.set_child(new Gtk.Label({
+                    label,
+                    xalign: 0,
+                    css_classes: ['heading'],
+                    margin_top: 8,
+                    margin_bottom: 4,
+                    margin_start: 6,
+                }));
+                listBox.append(headerRow);
+            };
 
-            for (const win of sorted) {
+            const addWindowRow = (win, afterTitleClick) => {
                 const row = new Adw.ActionRow({
                     title: win.wmClass,
                     subtitle: win.title,
                 });
-                const addBtn = new Gtk.Button({
-                    icon_name: 'list-add-symbolic',
+
+                const excludeAppBtn = new Gtk.Button({
+                    label: 'App',
                     valign: Gtk.Align.CENTER,
+                    tooltip_text: 'Exclude all windows from this app',
                 });
-                addBtn.connect('clicked', () => {
-                    const current = settings.get_strv('excluded-apps');
+                const excludeTitleBtn = new Gtk.Button({
+                    label: 'Title',
+                    valign: Gtk.Align.CENTER,
+                    tooltip_text: 'Exclude only windows with this title',
+                });
+
+                excludeAppBtn.connect('clicked', () => {
+                    const current = settings.get_strv('excluded-rules');
                     if (!current.includes(win.wmClass))
-                        settings.set_strv('excluded-apps', [...current, win.wmClass]);
+                        settings.set_strv('excluded-rules', [...current, win.wmClass]);
                     populate(true);
                 });
-                row.add_suffix(addBtn);
+                excludeTitleBtn.connect('clicked', () => {
+                    const rule = `${win.wmClass}::${win.title}`;
+                    const current = settings.get_strv('excluded-rules');
+                    if (!current.includes(rule))
+                        settings.set_strv('excluded-rules', [...current, rule]);
+                    afterTitleClick();
+                });
+
+                row.add_suffix(excludeAppBtn);
+                row.add_suffix(excludeTitleBtn);
                 listBox.append(row);
+            };
+
+            if (windows.length > 0) {
+                if (recent.length > 0)
+                    addSectionHeader('Open');
+                for (const win of sortWins(windows))
+                    addWindowRow(win, () => populate(false));
+            }
+
+            if (recent.length > 0) {
+                addSectionHeader('Recently closed (last 5 min)');
+                for (const win of sortWins(recent))
+                    addWindowRow(win, () => populate(false));
             }
         };
 
